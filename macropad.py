@@ -25,6 +25,7 @@
 
 # Imports
 import os
+from os.path import (expanduser as path_exp_user, expandvars as path_exp_vars)
 import sys
 import time
 import argparse
@@ -61,6 +62,7 @@ macros = None           # Contain all macros
 layer_info = None       # Contain all layers
 events_loop = True      # To control read events loop
 dev_connected = True    # To control read events loop
+key_mapping = {}        # Optional name to code mapping for convenience
 
 def get_devices():
     return [evdev.InputDevice(path) for path in evdev.list_devices()]
@@ -87,27 +89,27 @@ def grab_device(devices, descriptor):
 
     return return_device
 
-def check_held(held_keys, key_list):
-    all_held = True
-    for key in key_list:
-        if key not in held_keys:
-            all_held=False
-            break
-    return all_held
-
-
 def check_held_keys(held_keys, macros):
     # returns activated macro if any found
     for macro in macros:
         keylist = macro['keys']
         all_held = True
         for key in keylist:
+            key = key_mapping.get(key, key)
             if key not in held_keys:
                 all_held = False
                 break
         if all_held:
             return macro['name']
     return None
+
+def prepare_cmd(cmd_argv):
+    if isinstance(cmd_argv, list):
+        cmd_argv = [path_exp_user(path_exp_vars(x)) for x in cmd_argv]
+    else:
+        return path_exp_user(path_exp_vars(cmd_argv))
+
+    return cmd_argv
 
 def get_macro_info(mname, layer):
     global log         # Just for readibility
@@ -120,17 +122,17 @@ def get_macro_info(mname, layer):
 
 def switch_layer(name, macros):
     for layer in macros:
-        if layer.get(name):
+        if layer.get(name) is not None:
             return layer.get(name)
     return None
 
 def execute_layer_command(layers, name):
-    for layer in layers:
-        if layer.get('name') == name:
-            if layer.get('cmd') != None:
-                log.debug(f"Executing layer command: " + str(layer['name']) + " Command:" + str(layer['cmd']))
-                subprocess.Popen(layer['cmd'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, preexec_fn = os.setpgrp)
-    return
+    layer = next((x for x in layers if x.get("name") == name), None)
+
+    if layer is not None and layer.get("cmd") is not None:
+        log.debug(f"Executing command for layer {layer['name']}: {layer['cmd']}")
+        cmd_argv = prepare_cmd(layer.get("cmd"))
+        subprocess.Popen(cmd_argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, preexec_fn=os.setpgrp)
 
 def event_loop(keybeeb, layers, macros):
     global only_defined
@@ -144,8 +146,10 @@ def event_loop(keybeeb, layers, macros):
     toggle_delay = 0.25
     layer = macros[0][layers[0]['name']] #grab first layer name
     log.debug("Current layer: " + str(layer))
+
     # Execute optional command
     execute_layer_command(layers, layers[0]['name'])
+
     # Loop to read events
     while events_loop and dev_connected:
         select([keybeeb], [], [], 0.25)
@@ -154,10 +158,10 @@ def event_loop(keybeeb, layers, macros):
                 mname = None
                 layer_swap = None
                 layer_swap = check_held_keys(keybeeb.active_keys(), layers)
-                if layer_swap and (time.time()-toggle_time)>=toggle_delay:
+                if layer_swap and (time.time() - toggle_time) >= toggle_delay:
                     toggle_time = time.time()
                     layer = switch_layer(layer_swap, macros)
-                    log.debug("Layer Swap" + str(layer))
+                    log.debug("Layer Swap => " + str(layer))
                     # Execute optional command
                     execute_layer_command(layers, layer_swap)
 
@@ -166,23 +170,25 @@ def event_loop(keybeeb, layers, macros):
                     mname = check_held_keys([ev.code], layer)
                     if mname:
                         mtype, minfo = get_macro_info(mname, layer)
-                        if mtype=="button":
+                        if mtype == "button":
                             log.debug(f"Executing button macro: {mname} Command: {minfo}")
-                            if(str(ev.value) in minfo):
+                            if str(ev.value) in minfo:
                                 ui.write(e.EV_KEY, minfo[str(ev.value)], 1)
                                 ui.write(e.EV_KEY, minfo[str(ev.value)], 0)
                                 ui.write(e.EV_SYN, 0, 0)
                                 continue
-                        elif mtype=="dispose": 
+                        elif mtype == "dispose":
                             log.debug(f"Disposing of event: {mname}")
                             continue
                     mname = None
-                if mname and (time.time()-toggle_time)>=toggle_delay:
+
+                if mname and (time.time() - toggle_time) >= toggle_delay:
                     toggle_time = time.time()
                     mtype, minfo = get_macro_info(mname, layer)
                     if mtype == "cmd":
                         log.debug(f"Executing macro: {mname} Command: {minfo}")
-                        subprocess.Popen(minfo, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, preexec_fn = os.setpgrp)
+                        cmd_argv = prepare_cmd(minfo)
+                        subprocess.Popen(cmd_argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, preexec_fn = os.setpgrp)
                     elif mtype == "key":
                         log.debug(f"Executing macro: {mname} Key: {minfo}")
                         ui.write(e.EV_KEY, minfo[0], 1)
@@ -322,6 +328,26 @@ def load_config():
     # Overwrite with argument value if existent
     if args.clone is not None:
         clone = args.clone
+
+    # fill up layer macros from global / defaults
+    layer_macros = json_data.get("macros", {})
+    default_macros = layer_macros.get("__default__")
+    if default_macros:
+        for k, v in layer_macros.items():
+            if k == "__default__":
+                continue
+            for d in default_macros:
+                macro_exists = next((x for x in v if x[1] == d[1]), None)
+                if not macro_exists:
+                    v.append(d)
+
+        # cleanup
+        del layer_macros["__default__"]
+
+    # read optional key mapping
+    if "mapping" in json_data:
+        key_mapping.update(json_data["mapping"])
+
     return 0
 
 def build_macro_list():
@@ -376,7 +402,7 @@ if __name__ == "__main__":
     create_logger()
     log.debug(f"Command line args: {args}")
     # Default path to config file
-    config_file = os.path.expanduser(DEFAULT_CONFIG_FILE)
+    config_file = path_exp_user(DEFAULT_CONFIG_FILE)
     # Set alternative path to config file
     if args.config_file is not None:
         config_file = args.config_file
@@ -415,7 +441,7 @@ if __name__ == "__main__":
         if events_loop == True:
             log.warning("Device probably was disconnected")
             sys.stdout.write("Device probably was disconnected\n")
-            time.sleep(5)
+            time.sleep(3)
             dev_connected = True
     log.info("Program interrupted")
     sys.stdout.write("\nProgram interrupted\n")
