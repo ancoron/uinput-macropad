@@ -1,0 +1,57 @@
+{
+  "macros": {
+    "m1": [
+    ],
+    "m2": [
+      ["StarCraft 2", ["G7"], "cmd", ["/usr/bin/lutris", "lutris:rungame/starcraft-ii"]]
+    ],
+    "m3": [
+    ],
+    "mr": [
+    ],
+    "__default__": [
+      ["browser", ["G1"], "cmd", "~/.local/bin/firefox"],
+      ["editor", ["G2"], "cmd", "/usr/bin/kate"],
+      ["terminal", ["G3"], "cmd", "/usr/bin/konsole"]
+    ]
+  },
+  "layers": [
+    ["m1", ["M1"], ["~/.local/bin/g15_macro_enable", "m1"]],
+    ["m2", ["M2"], ["~/.local/bin/g15_macro_enable", "m2"]],
+    ["m3", ["M3"], ["~/.local/bin/g15_macro_enable", "m3"]],
+    ["mr", ["MR", "G1"], ["~/.local/bin/g15_macro_enable", "mr"]]
+  ],
+  "dev_name": "Logitech Gaming Keyboard Gaming Keys",
+  "only_defined": true,
+  "full_grab": true,
+  "clone": false,
+  "mapping": {
+    "M1": 691,
+    "M2": 692,
+    "M3": 693,
+    "MR": 688,
+    "LCD": 696,
+    "L1": 697,
+    "L2": 698,
+    "L3": 699,
+    "L4": 700,
+    "G1": 656,
+    "G2": 657,
+    "G3": 658,
+    "G4": 659,
+    "G5": 660,
+    "G6": 661,
+    "G7": 662,
+    "G8": 663,
+    "G9": 664,
+    "G10": 665,
+    "G11": 666,
+    "G12": 667,
+    "G13": 668,
+    "G14": 669,
+    "G15": 670,
+    "G16": 671,
+    "G17": 672,
+    "G18": 673
+  }
+}
