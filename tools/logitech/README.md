@@ -16,6 +16,7 @@ By default, the G1-G18 keys are mapped to other standard keys on device
 "Logitech G510 Gaming Keyboard":
 
 | Keys | Mapping |
+|------|---------|
 | G1 - G12 | F1 - F12 |
 | G13 - G18 | 1 - 6 (numbers) |
 
