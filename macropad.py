@@ -20,12 +20,12 @@
 # PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License along with UInput-macropad.
-# If not, see <https://www.gnu.org/licenses/>. 
+# If not, see <https://www.gnu.org/licenses/>.
 #
 
 # Imports
 import os
-from os.path import (expanduser as path_exp_user, expandvars as path_exp_vars)
+from os.path import expanduser as path_exp_user, expandvars as path_exp_vars
 import sys
 import time
 import argparse
@@ -40,48 +40,50 @@ from evdev import ecodes as e
 from select import select
 
 # Constants
-PROGNAME = 'UInput Macropad'
-VERSION = '0.3'         # Until a stable release, this numeration will not follow version's common rules
-DEFAULT_CONFIG_FILE = '~/.config/uinput-macropad/config.json'
-LOG_FILE_PATH = '~/.local/state/'
-LOG_FILE_NAME = 'uinput-macropad'
+PROGNAME = "UInput Macropad"
+VERSION = "0.3"  # Until a stable release, this numeration will not follow version's common rules
+DEFAULT_CONFIG_FILE = "~/.config/uinput-macropad/config.json"
+LOG_FILE_PATH = "~/.local/state/"
+LOG_FILE_NAME = "uinput-macropad"
 
 # Global variables
 # (I know, global variables are evil, but
 # this isn't a very big program, so I think
 # that these few are manageable. Forgive me ;-)
-args = None             # Command line arguments
-log = None              # Logging manager
-config_file = None      # Config file
-dev_name = None         # Device to be grabbed
-full_grab = None        # All events are managed
-only_defined = None     # Send defined only
-clone = None            # Clone the device capabilities
-json_data = None        # Data from config file
-macros = None           # Contain all macros
-layer_info = None       # Contain all layers
-events_loop = True      # To control read events loop
-dev_connected = True    # To control read events loop
-key_mapping = {}        # Optional name to code mapping for convenience
+args = None  # Command line arguments
+log = None  # Logging manager
+config_file = None  # Config file
+dev_name = None  # Device to be grabbed
+full_grab = None  # All events are managed
+only_defined = None  # Send defined only
+clone = None  # Clone the device capabilities
+json_data = None  # Data from config file
+macros = None  # Contain all macros
+layer_info = None  # Contain all layers
+events_loop = True  # To control read events loop
+dev_connected = True  # To control read events loop
+key_mapping = {}  # Optional name to code mapping for convenience
+
 
 def get_devices():
     return [evdev.InputDevice(path) for path in evdev.list_devices()]
 
+
 def grab_device(devices, descriptor):
-    #determine if descriptor is a path or a name
+    # determine if descriptor is a path or a name
     return_device = None
-    if len(descriptor) <= 2: #assume that people don't have more than 99 input devices
-        descriptor = "/dev/input/event"+descriptor
-    if "/dev/" in descriptor: #assume function was passed a path
+    if len(descriptor) <= 2:  # assume that people don't have more than 99 input devices
+        descriptor = "/dev/input/event" + descriptor
+    if "/dev/" in descriptor:  # assume function was passed a path
         for device in devices:
-            if descriptor==device.path:
+            if descriptor == device.path:
                 device.close()
                 return_device = evdev.InputDevice(device.path)
             else:
                 device.close()
-    else: #assume that function was passed a plain text name
+    else:  # assume that function was passed a plain text name
         for device in devices:
-            if descriptor==device.name:
+            if descriptor == device.name:
                 device.close()
                 return_device = evdev.InputDevice(device.path)
             else:
@@ -89,10 +91,11 @@ def grab_device(devices, descriptor):
 
     return return_device
 
+
 def check_held_keys(held_keys, macros):
     # returns activated macro if any found
     for macro in macros:
-        keylist = macro['keys']
+        keylist = macro["keys"]
         all_held = True
         for key in keylist:
             key = key_mapping.get(key, key)
@@ -100,8 +103,9 @@ def check_held_keys(held_keys, macros):
                 all_held = False
                 break
         if all_held:
-            return macro['name']
+            return macro["name"]
     return None
+
 
 def prepare_cmd(cmd_argv):
     if isinstance(cmd_argv, list):
@@ -111,14 +115,16 @@ def prepare_cmd(cmd_argv):
 
     return cmd_argv
 
+
 def get_macro_info(mname, layer):
-    global log         # Just for readibility
+    global log  # Just for readibility
 
     for macro in layer:
-        if macro['name']==mname:
+        if macro["name"] == mname:
             log.debug("MACRO FOUND")
-            return macro['type'], macro['info']
+            return macro["type"], macro["info"]
     return None
+
 
 def switch_layer(name, macros):
     for layer in macros:
@@ -126,29 +132,36 @@ def switch_layer(name, macros):
             return layer.get(name)
     return None
 
+
 def execute_layer_command(layers, name):
     layer = next((x for x in layers if x.get("name") == name), None)
 
     if layer is not None and layer.get("cmd") is not None:
         log.debug(f"Executing command for layer {layer['name']}: {layer['cmd']}")
         cmd_argv = prepare_cmd(layer.get("cmd"))
-        subprocess.Popen(cmd_argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, preexec_fn=os.setpgrp)
+        subprocess.Popen(
+            cmd_argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            preexec_fn=os.setpgrp,
+        )
+
 
 def event_loop(keybeeb, layers, macros):
     global only_defined
     global dev_connected
-    global log          # Just for readibility
+    global log  # Just for readibility
     global events_loop  # Just for readibility
 
     # Initial setup
     held_keys = []
     toggle_time = time.time()
     toggle_delay = 0.25
-    layer = macros[0][layers[0]['name']] #grab first layer name
+    layer = macros[0][layers[0]["name"]]  # grab first layer name
     log.debug("Current layer: " + str(layer))
 
     # Execute optional command
-    execute_layer_command(layers, layers[0]['name'])
+    execute_layer_command(layers, layers[0]["name"])
 
     # Loop to read events
     while events_loop and dev_connected:
@@ -166,12 +179,14 @@ def event_loop(keybeeb, layers, macros):
                     execute_layer_command(layers, layer_swap)
 
                 mname = check_held_keys(keybeeb.active_keys(), layer)
-                if mname == None: # if none returned check if raw key code is present
+                if mname == None:  # if none returned check if raw key code is present
                     mname = check_held_keys([ev.code], layer)
                     if mname:
                         mtype, minfo = get_macro_info(mname, layer)
                         if mtype == "button":
-                            log.debug(f"Executing button macro: {mname} Command: {minfo}")
+                            log.debug(
+                                f"Executing button macro: {mname} Command: {minfo}"
+                            )
                             if str(ev.value) in minfo:
                                 ui.write(e.EV_KEY, minfo[str(ev.value)], 1)
                                 ui.write(e.EV_KEY, minfo[str(ev.value)], 0)
@@ -188,7 +203,12 @@ def event_loop(keybeeb, layers, macros):
                     if mtype == "cmd":
                         log.debug(f"Executing macro: {mname} Command: {minfo}")
                         cmd_argv = prepare_cmd(minfo)
-                        subprocess.Popen(cmd_argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, preexec_fn = os.setpgrp)
+                        subprocess.Popen(
+                            cmd_argv,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            preexec_fn=os.setpgrp,
+                        )
                     elif mtype == "key":
                         log.debug(f"Executing macro: {mname} Key: {minfo}")
                         ui.write(e.EV_KEY, minfo[0], 1)
@@ -204,11 +224,11 @@ def event_loop(keybeeb, layers, macros):
                         for keycode in minfo:
                             # for keycode in keyset:
                             if type(keycode) is int:
-                                if keycode>0:
-                                    ui.write(e.EV_KEY, keycode, 1) #down
+                                if keycode > 0:
+                                    ui.write(e.EV_KEY, keycode, 1)  # down
                                 else:
-                                    ui.write(e.EV_KEY, -keycode, 0) #up
-                            elif type(keycode) is float: #sleep
+                                    ui.write(e.EV_KEY, -keycode, 0)  # up
+                            elif type(keycode) is float:  # sleep
                                 ui.write(e.EV_SYN, 0, 0)
                                 time.sleep(keycode)
                             elif type(keycode) is list:
@@ -217,18 +237,19 @@ def event_loop(keybeeb, layers, macros):
                                     ui.write(e.EV_KEY, k, 0)
                                 ui.write(e.EV_SYN, 0, 0)
 
-
                         ui.write(e.EV_SYN, 0, 0)
-                            # time.sleep(0.01)
+                        # time.sleep(0.01)
 
                     elif mtype == "dispose":
                         log.debug(f"Disposing of event: {mname}")
                         continue
 
-                if (not only_defined and not mname):
-                    log.debug(f"Command - TYPE:{ev.type} CODE:{ev.code} VALUE:{ev.value}")
+                if not only_defined and not mname:
+                    log.debug(
+                        f"Command - TYPE:{ev.type} CODE:{ev.code} VALUE:{ev.value}"
+                    )
                     ui.write(ev.type, ev.code, ev.value)
-                #print(ev)
+                # print(ev)
         except BlockingIOError:
             pass
         except OSError:
@@ -236,30 +257,56 @@ def event_loop(keybeeb, layers, macros):
             sys.stdout.write("Device probably was disconnected\n")
             dev_connected = False
 
+
 def parse_arguments():
     global args
 
     # Create arguments parser
-    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,\
-        description = PROGNAME + " ver." + VERSION + "\n(standard path of config file is " + DEFAULT_CONFIG_FILE + ")",\
-        epilog = "Copyright: 2021, 2022 sebastiansam55\nCopyright: 2023 Lurgainn\nLicensed under the terms of the GNU General Public License version 3")
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=PROGNAME
+        + " ver."
+        + VERSION
+        + "\n(standard path of config file is "
+        + DEFAULT_CONFIG_FILE
+        + ")",
+        epilog="Copyright: 2021, 2022 sebastiansam55\nCopyright: 2023 Lurgainn\nLicensed under the terms of the GNU General Public License version 3",
+    )
     # Set the arguments
-    parser.add_argument('-c', '--config-file', help = "Path to alternative config file")
-    parser.add_argument('-v', '--verbose', action = 'store_true', help = "Enable verbose logging (default = False)")
+    parser.add_argument("-c", "--config-file", help="Path to alternative config file")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging (default = False)",
+    )
     # command line behavior wiil take priority over config file settings
-    parser.add_argument('--full-grab', action = argparse.BooleanOptionalAction, help="Absorbs all signals coming from device (default = True)")
-    parser.add_argument('--only-defined', action = argparse.BooleanOptionalAction, help="Determine if defined only keystrokes are sent (default = False)")
-    parser.add_argument('--clone', action = argparse.BooleanOptionalAction, help = "Creates the UInput device with the capability of the device we're grabbing (default = True)")
-    #TODO
-    #parser.add_argument('-d', '--dev_name', help="The device name (in quotes) that you want to read/grab from")
+    parser.add_argument(
+        "--full-grab",
+        action=argparse.BooleanOptionalAction,
+        help="Absorbs all signals coming from device (default = True)",
+    )
+    parser.add_argument(
+        "--only-defined",
+        action=argparse.BooleanOptionalAction,
+        help="Determine if defined only keystrokes are sent (default = False)",
+    )
+    parser.add_argument(
+        "--clone",
+        action=argparse.BooleanOptionalAction,
+        help="Creates the UInput device with the capability of the device we're grabbing (default = True)",
+    )
+    # TODO
+    # parser.add_argument('-d', '--dev_name', help="The device name (in quotes) that you want to read/grab from")
     #
     # Parse arguments
     args = parser.parse_args()
     return None
 
+
 def create_logger():
     global log
-    global args         # Just for readibility
+    global args  # Just for readibility
 
     log = logging.getLogger(PROGNAME)
     # Set verbosity
@@ -272,14 +319,19 @@ def create_logger():
     log_file = os.path.join(log_file, LOG_FILE_NAME)
     if not os.path.isdir(log_file):
         os.makedirs(log_file)
-    log_file = os.path.join(log_file, LOG_FILE_NAME + '.log')
+    log_file = os.path.join(log_file, LOG_FILE_NAME + ".log")
     # Max 3 files of ~1MB each
-    handler = RotatingFileHandler(log_file, maxBytes=10**6, backupCount=3, encoding='utf-8')
+    handler = RotatingFileHandler(
+        log_file, maxBytes=10**6, backupCount=3, encoding="utf-8"
+    )
     # Format of logging strings
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
     handler.setFormatter(formatter)
     log.addHandler(handler)
     return None
+
 
 def load_config():
     global json_data
@@ -287,12 +339,12 @@ def load_config():
     global full_grab
     global only_defined
     global clone
-    global config_file          # Just for readibility
-    global log                  # Just for readibility
-    global args                 # Just for readibility
+    global config_file  # Just for readibility
+    global log  # Just for readibility
+    global args  # Just for readibility
 
     try:
-        f = open(config_file, 'r')
+        f = open(config_file, "r")
         json_data = json.loads(f.read())
         f.close()
     except:
@@ -310,7 +362,7 @@ def load_config():
     # Overwrite with argument value if existent
     if args.full_grab is not None:
         full_grab = args.full_grab
-    
+
     # Set only_defined default value
     only_defined = False
     # Overwrite with config file if defined
@@ -319,7 +371,7 @@ def load_config():
     # Overwrite with argument value if existent
     if args.only_defined is not None:
         only_defined = args.only_defined
-    
+
     # Set clone default value
     clone = True
     # Overwrite with config file if defined
@@ -350,6 +402,7 @@ def load_config():
 
     return 0
 
+
 def build_macro_list():
     global macros
     global layer_info
@@ -363,37 +416,39 @@ def build_macro_list():
         for macro_info in layers[layer]:
             log.debug("Macro " + str(k) + ": " + str(macro_info))
             k += 1
-            macro = {"name":None, "keys":None, "type":None, "info":None}
-            macro['name'] = macro_info[0]
-            macro['keys'] = macro_info[1]
-            macro['type'] = macro_info[2]
-            macro['info'] = macro_info[3]
+            macro = {"name": None, "keys": None, "type": None, "info": None}
+            macro["name"] = macro_info[0]
+            macro["keys"] = macro_info[1]
+            macro["type"] = macro_info[2]
+            macro["info"] = macro_info[3]
 
             layer_macros.append(macro)
-        macros.append({layer:layer_macros})
+        macros.append({layer: layer_macros})
         # macros.append(layer_macros)
 
     layer_info = []
-    for layer in json_data['layers']:
+    for layer in json_data["layers"]:
         log.debug("Layer (names): " + str(layer))
-        lay = {"name":None, "keys":None, "cmd": None}
-        lay['name'] = layer[0]
-        lay['keys'] = layer[1]
+        lay = {"name": None, "keys": None, "cmd": None}
+        lay["name"] = layer[0]
+        lay["keys"] = layer[1]
         if len(layer) == 3:
-            lay['cmd'] = layer[2]
+            lay["cmd"] = layer[2]
         else:
-            lay['cmd'] = None
+            lay["cmd"] = None
         layer_info.append(lay)
 
     log.debug(f"Macro list by layer: {macros}")
     log.debug(f"Layer swap hotkey list: {layer_info}")
     return
 
+
 def stop_loop(signum, frame):
     global events_loop
 
     events_loop = False
     return None
+
 
 if __name__ == "__main__":
     # Parse program arguments
@@ -434,9 +489,10 @@ if __name__ == "__main__":
             log.info(f"GRABBING FOR REMAPPING: {str(dev)}")
             if clone:
                 ui = evdev.UInput.from_device(dev, name="Macropad Output")
-            else: #previous behavior
+            else:  # previous behavior
                 ui = evdev.UInput(name="Macropad Output")
-            if full_grab: dev.grab()
+            if full_grab:
+                dev.grab()
             event_loop(dev, layer_info, macros)
         if events_loop == True:
             log.warning("Device probably was disconnected")
